@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "primerfold"
+version = "1.0.0"
+description = "PrimerFold - local DNA primer secondary-structure analysis GUI powered by ViennaRNA and Streamlit"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "X-1546520470" }]
+keywords = ["primer", "viennarna", "rnafold", "pcr", "secondary-structure", "streamlit"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = [
+  "streamlit>=1.49",
+  "pandas>=2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/X-1546520470/rnafold"
+
+[project.scripts]
+primerfold-gui = "primerfold.__main__:main"
+
+[tool.setuptools]
+packages = ["primerfold"]

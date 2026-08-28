@@ -1,0 +1,4 @@
+# ViennaRNA 命令行工具（RNAfold / RNAduplex / RNAplot）不在 PyPI 上分发，
+# 需通过 conda 安装：conda install -c bioconda viennarna
+streamlit>=1.49
+pandas>=2.0
