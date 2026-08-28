@@ -10,12 +10,17 @@ DNA 参数（Mathews 2004）并禁止 T→U 自动转换。
 ## 功能特性
 
 - 🔬 **三种分析**：发卡结构（RNAfold）、自二聚体与交叉二聚体（RNAduplex，仅允许链间配对）。
+- 🧾 **引物属性**：Tm（SantaLucia 1998 最近邻法，含单价盐校正）、GC 含量、分子量、
+  3′GC clamp 与最长同聚串，纯序列本地计算。
+- 🔥 **互作热图**：N×N 矩阵总览所有引物两两二聚体强度，颜色越红结合越强，
+  对角线为自二聚体，适合快速定位多重 PCR 中需要关注的组合。
+- 📄 **HTML 报告导出**：一键生成自包含报告（含指标表、热图、结构图、逐条解读与
+  逐位对照），可存档、打印或分享；CSV 导出同步保留。
 - 🎨 **美化结构图**：碱基按类型着色，实心圆＝配对/空心圆＝未配对，G≡C 与 A=T 配对短线区分，
   紫色虚线圈标出 3′端最后 5 nt，图内含 5′/3′ 标签与完整图例，可导出 SVG。
 - 📖 **每块数据都有解释**：列头 ⓘ 提示、指标说明对照表、逐条结果的自动“结果解读”。
 - 🔤 **序列/结构逐位对照**：配对括号按嵌套深度着色、链间配对洋红高亮、3′端下划线。
 - 🖥️ **本地运行**：仅监听 127.0.0.1，不上传任何序列；不使用通用阈值做“合格/不合格”判定。
-- 📤 **导出**：全部结果（CSV，UTF-8 BOM）与单张结构图（SVG）。
 
 ## 安装
 
@@ -111,8 +116,9 @@ python -m unittest discover -s tests   # 需要本机可用 ViennaRNA
 代码结构：
 
 - `primerfold/core.py` — 输入解析、ViennaRNA 调用与指标计算。
+- `primerfold/qc.py` — 基础引物属性（Tm、GC%、分子量、GC clamp、同聚串）。
 - `primerfold/plot.py` — 解析 RNAplot SVG 几何并重绘为美化结构图。
-- `primerfold/present.py` — 结果解读文本与彩色序列/结构对照 HTML。
+- `primerfold/present.py` — 结果解读、对照 HTML、互作热图与 HTML 报告。
 - `primerfold/app.py` — Streamlit 界面。
 - `primerfold/__main__.py` — `python -m primerfold` 启动入口。
 

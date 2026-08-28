@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html as html_module
+from datetime import datetime
 
 import pandas as pd
 import streamlit as st
@@ -11,14 +12,19 @@ from primerfold import (
     AnalysisJob,
     FoldExecutionError,
     FoldResult,
+    Primer,
     PrimerInputError,
+    __version__,
     alignment_html,
     alignment_legend_html,
+    build_html_report,
     build_jobs,
     fold_dimer,
     fold_hairpin,
+    heatmap_html,
     interpret_result,
     parse_primers,
+    qc_rows,
     render_styled_structure_svg,
     render_structure_svg,
     svg_pixel_dimensions,
@@ -454,6 +460,90 @@ def render_structure_viewer(results: list[FoldResult], key_prefix: str) -> None:
         render_alignment(selected)
 
 
+QC_COLUMN_HELP = {
+    "引物": "输入中的引物名称。",
+    "长度 (nt)": "序列长度；常规引物约 18–30 nt（描述性参考）。",
+    "GC (%)": "G+C 碱基占比；常见建议范围 40–60%。",
+    "Tm (°C)": (
+        "解链温度：SantaLucia 1998 最近邻法，按当前单价盐浓度校正，"
+        "总链浓度按 250 nM（非自互补假设）。不含 Mg²⁺/dNTP 校正，仅作参考。"
+    ),
+    "分子量 (Da)": "单链 DNA 分子量（去磷校正）。",
+    "3′GC clamp": "3′端最后 5 nt 中 G/C 的个数；常见建议 1–3 个（描述性）。",
+    "最长同聚串": (
+        "连续相同碱基的最长重复；≥4 个（尤其 G/C）可能增加滑移或错配风险（描述性）。"
+    ),
+}
+
+
+def render_qc_tab(primers: list[Primer], salt_m: float) -> None:
+    st.caption(
+        "基础序列属性（纯序列计算，与结构预测无关）：Tm、GC 含量、分子量、"
+        "3′GC clamp 与同聚碱基串。"
+    )
+    dataframe = pd.DataFrame(qc_rows(primers, na_m=salt_m))
+    st.dataframe(
+        dataframe,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            name: st.column_config.Column(help=QC_COLUMN_HELP[name])
+            for name in dataframe.columns
+            if name in QC_COLUMN_HELP
+        },
+    )
+    st.caption(
+        "💡 悬停列名旁的 ⓘ 图标可查看每个属性的含义与常见参考范围；"
+        "本工具不做“合格/不合格”判定。Tm 按左侧边栏的单价盐浓度计算。"
+    )
+
+
+def render_heatmap_tab(results: list[FoldResult]) -> None:
+    st.caption(
+        "引物两两互作总览：颜色越红表示链间结合预测越强，"
+        "适合快速定位多重 PCR 中最需要关注的组合。"
+    )
+    heatmap = heatmap_html(results)
+    if not heatmap:
+        st.info(
+            "当前结果中没有二聚体分析（自二聚体/交叉二聚体），无法绘制热图；"
+            "请在侧边栏勾选相应分析类型后重新运行。"
+        )
+        return
+    st.markdown(heatmap, unsafe_allow_html=True)
+
+
+def build_report_html(
+    primers: list[Primer],
+    results: list[FoldResult],
+    *,
+    temperature_c: float,
+    salt_m: float,
+) -> bytes:
+    figures: dict[str, str] = {}
+    for result in results:
+        if result.base_pairs == 0:
+            continue
+        labels = [result.primer_a.name]
+        if result.primer_b:
+            labels.append(result.primer_b.name)
+        try:
+            figures[result.label] = cached_styled_svg(
+                result.folded_sequence, result.structure, tuple(labels)
+            )
+        except FoldExecutionError:
+            continue
+    report = build_html_report(
+        primers=primers,
+        results=results,
+        figures=figures,
+        temperature_c=temperature_c,
+        salt_m=salt_m,
+        tool_version=__version__,
+    )
+    return report.encode("utf-8")
+
+
 def render_glossary() -> None:
     with st.expander("指标说明：每个数字代表什么、如何解读"):
         rows = "".join(
@@ -524,17 +614,31 @@ def render_results(payload: dict[str, object]) -> None:
         for kind in ("hairpin", "self_dimer", "cross_dimer")
     }
     nonempty_kinds = [kind for kind, values in grouped.items() if values]
-    tabs = st.tabs(
-        [
-            f"{KIND_ICONS[kind]} {KIND_LABELS[kind]}（{len(grouped[kind])}）"
-            for kind in nonempty_kinds
-        ]
-    )
-    for tab, kind in zip(tabs, nonempty_kinds, strict=True):
+    dimer_results = [
+        result for result in results if result.kind != "hairpin"
+    ]
+    tab_specs: list[tuple[str, object]] = [
+        ("🧾 引物属性", lambda: render_qc_tab(list(primers), salt_m))
+    ]
+    if dimer_results:
+        tab_specs.append(("🔥 互作热图", lambda: render_heatmap_tab(results)))
+    for kind in nonempty_kinds:
+        tab_specs.append(
+            (
+                f"{KIND_ICONS[kind]} {KIND_LABELS[kind]}（{len(grouped[kind])}）",
+                kind,
+            )
+        )
+    tabs = st.tabs([title for title, _ in tab_specs])
+    for tab, (title, content) in zip(tabs, tab_specs, strict=True):
         with tab:
-            st.caption(KIND_DESCRIPTIONS[kind])
-            render_table(grouped[kind], kind, temperature_c, salt_m)
-            render_structure_viewer(grouped[kind], kind)
+            if callable(content):
+                content()
+            else:
+                kind = content
+                st.caption(KIND_DESCRIPTIONS[kind])
+                render_table(grouped[kind], kind, temperature_c, salt_m)
+                render_structure_viewer(grouped[kind], kind)
 
     all_rows = make_dataframe(
         results,
@@ -542,14 +646,32 @@ def render_results(payload: dict[str, object]) -> None:
         salt_m=salt_m,
     )
     csv_bytes = all_rows.to_csv(index=False).encode("utf-8-sig")
-    st.download_button(
-        "下载全部结果（CSV，含全部列与解释性数值）",
-        data=csv_bytes,
-        file_name="primerfold_results.csv",
-        mime="text/csv",
-        type="primary",
-        on_click="ignore",
+    report_bytes = build_report_html(
+        list(primers),
+        results,
+        temperature_c=temperature_c,
+        salt_m=salt_m,
     )
+    csv_column, report_column = st.columns(2)
+    with csv_column:
+        st.download_button(
+            "下载全部结果（CSV，含全部列与解释性数值）",
+            data=csv_bytes,
+            file_name="primerfold_results.csv",
+            mime="text/csv",
+            type="primary",
+            width="stretch",
+            on_click="ignore",
+        )
+    with report_column:
+        st.download_button(
+            "下载完整报告（HTML，含结构图与逐条解读）",
+            data=report_bytes,
+            file_name=f"primerfold_report_{datetime.now():%Y%m%d_%H%M%S}.html",
+            mime="text/html",
+            width="stretch",
+            on_click="ignore",
+        )
 
     unique_warnings = list(
         dict.fromkeys(
