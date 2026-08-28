@@ -19,14 +19,17 @@ from primerfold import (
     alignment_legend_html,
     build_html_report,
     build_jobs,
+    cofold_energies,
     fold_dimer,
     fold_hairpin,
     heatmap_html,
+    interpret_equilibrium,
     interpret_result,
     parse_primers,
     qc_rows,
     render_styled_structure_svg,
     render_structure_svg,
+    species_equilibrium,
     svg_pixel_dimensions,
 )
 
@@ -544,6 +547,125 @@ def build_report_html(
     return report.encode("utf-8")
 
 
+CONCENTRATION_COLUMN_HELP = {
+    "组合": "参与互作的两条引物（自二聚体为同一引物的两个拷贝）。",
+    "类型": "自二聚体＝引物与自身；交叉二聚体＝不同引物之间。",
+    "AB (nM)": "平衡时异源二聚体（A·B）的浓度。",
+    "AA (nM)": "平衡时 A 链自二聚体的浓度。",
+    "BB (nM)": "平衡时 B 链自二聚体的浓度。",
+    "A 游离 (%)": "平衡时未结合的 A 单链占其初始浓度的比例。",
+    "B 游离 (%)": "平衡时未结合的 B 单链占其初始浓度的比例。",
+    "A 被占用 (%)": (
+        "A 分子处于任意二聚体（AB 或 AA）中的比例＝(AB + 2·AA)/[A]₀；"
+        "直接对应可被聚合酶利用的引物减少量。"
+    ),
+    "参考 MFE (kcal/mol)": (
+        "对应 RNAduplex 仅链间模型的 MFE，便于与上方页签对照"
+        "（两者模型不同，数值可以不同）。"
+    ),
+}
+
+MAX_CONCENTRATION_PAIRS = 40
+
+
+def render_concentration_tab(
+    results: list[FoldResult],
+    *,
+    temperature_c: float,
+    salt_m: float,
+    conc_nm: float,
+) -> None:
+    st.caption(
+        f"引物浓度平衡：假设每条引物初始浓度 {conc_nm:g} nM，"
+        "用 RNAcofold 集合自由能计算游离单链与各二聚体物种的平衡浓度"
+        "（统计力学自洽求解，允许链内与链间配对）。"
+    )
+    dimers = [result for result in results if result.kind != "hairpin"]
+    if not dimers:
+        st.info("当前结果中没有二聚体分析，无法计算浓度平衡。")
+        return
+
+    seen: set[tuple[str, str]] = set()
+    unique_pairs: list[tuple[Primer, Primer, FoldResult]] = []
+    for result in sorted(dimers, key=lambda item: item.mfe_kcal_mol):
+        key = tuple(sorted((result.primer_a.name, result.primer_b.name)))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_pairs.append((result.primer_a, result.primer_b, result))
+    self_pairs = [item for item in unique_pairs if item[0].name == item[1].name]
+    cross_pairs = [item for item in unique_pairs if item[0].name != item[1].name]
+    computed = self_pairs + cross_pairs[:MAX_CONCENTRATION_PAIRS]
+    if len(cross_pairs) > MAX_CONCENTRATION_PAIRS:
+        st.caption(
+            f"引物较多：交叉二聚体仅计算 MFE 最强的 {MAX_CONCENTRATION_PAIRS} 个组合。"
+        )
+
+    conc_m = conc_nm * 1e-9
+    rows: list[dict[str, object]] = []
+    strongest: tuple[str, object, float] | None = None
+    for primer_a, primer_b, result in computed:
+        try:
+            energies = cofold_energies(
+                primer_a, primer_b, temperature_c=temperature_c, salt_m=salt_m
+            )
+            equilibrium = species_equilibrium(
+                energies,
+                temperature_c=temperature_c,
+                conc_a=conc_m,
+                conc_b=conc_m,
+            )
+        except FoldExecutionError as exc:
+            st.warning(f"浓度平衡计算失败：{exc}")
+            return
+        kind = "自二聚体" if primer_a.name == primer_b.name else "交叉二聚体"
+        rows.append(
+            {
+                "组合": f"{primer_a.name} × {primer_b.name}",
+                "类型": kind,
+                "AB (nM)": round(equilibrium.ab * 1e9, 2),
+                "AA (nM)": round(equilibrium.aa * 1e9, 2),
+                "BB (nM)": round(equilibrium.bb * 1e9, 2),
+                "A 游离 (%)": round(equilibrium.free_a / conc_m * 100, 1),
+                "B 游离 (%)": round(equilibrium.free_b / conc_m * 100, 1),
+                "A 被占用 (%)": round(equilibrium.a_occupied_fraction * 100, 1),
+                "参考 MFE (kcal/mol)": round(result.mfe_kcal_mol, 2),
+            }
+        )
+        dimerized = (
+            equilibrium.ab + equilibrium.aa + equilibrium.bb
+        )
+        if strongest is None or dimerized > strongest[2]:
+            strongest = (f"{primer_a.name} × {primer_b.name}", equilibrium, dimerized)
+
+    dataframe = pd.DataFrame(rows)
+    st.dataframe(
+        dataframe,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            name: st.column_config.Column(help=CONCENTRATION_COLUMN_HELP[name])
+            for name in dataframe.columns
+            if name in CONCENTRATION_COLUMN_HELP
+        },
+    )
+    st.caption(
+        "💡 悬停列名旁的 ⓘ 图标可查看每列含义。“A 被占用”综合了 AB 与 AA，"
+        "是衡量该引物可用性损失的最直接指标。"
+    )
+
+    if strongest is not None and strongest[1] is not None:
+        label, equilibrium, _ = strongest
+        bullets = interpret_equilibrium(equilibrium, conc_nm=conc_nm)
+        items = "".join(f"<li>{html_module.escape(bullet)}</li>" for bullet in bullets)
+        st.markdown(
+            '<div class="pf-interpret"><div class="pf-interpret-title">📖 浓度解读：'
+            f"{html_module.escape(label)} 的二聚体化程度最高（描述性说明，非合格判定）</div>"
+            f"<ul>{items}</ul></div>",
+            unsafe_allow_html=True,
+        )
+
+
 def render_glossary() -> None:
     with st.expander("指标说明：每个数字代表什么、如何解读"):
         rows = "".join(
@@ -627,6 +749,18 @@ def render_results(payload: dict[str, object]) -> None:
             (
                 f"{KIND_ICONS[kind]} {KIND_LABELS[kind]}（{len(grouped[kind])}）",
                 kind,
+            )
+        )
+    if enable_concentration:
+        tab_specs.append(
+            (
+                "⚖️ 浓度平衡",
+                lambda: render_concentration_tab(
+                    results,
+                    temperature_c=temperature_c,
+                    salt_m=salt_m,
+                    conc_nm=float(primer_conc_nm),
+                ),
             )
         )
     tabs = st.tabs([title for title, _ in tab_specs])
@@ -754,12 +888,34 @@ with st.sidebar:
         help="不同引物之间的链间配对；占用双方 3′末端时最危险。",
     )
 
+    st.markdown('<div class="pf-section-h">③ 浓度平衡（可选）</div>', unsafe_allow_html=True)
+    enable_concentration = st.checkbox(
+        "启用浓度平衡分析",
+        value=False,
+        help=(
+            "基于 RNAcofold 集合自由能，计算给定引物浓度下游离单链、AB 异源二聚体与 "
+            "AA/BB 自二聚体的平衡浓度，评估二聚体实际形成比例（实验性功能）。"
+        ),
+    )
+    primer_conc_nm = st.number_input(
+        "引物浓度 (nM)",
+        min_value=1.0,
+        max_value=100000.0,
+        value=500.0,
+        step=50.0,
+        format="%.0f",
+        disabled=not enable_concentration,
+        help="每条引物的初始浓度；PCR 中常见 100–1000 nM。对所有引物使用同一浓度。",
+    )
+
     with st.expander("模型与边界"):
         st.markdown(
             "- ViennaRNA 2.7.2\n"
             "- Mathews 2004 DNA 参数（`--paramFile=DNA`）\n"
             "- 保留 T，不转换为 U（`--noconv`）\n"
             "- 发卡使用 RNAfold；二聚体使用仅允许链间配对的 RNAduplex\n"
+            "- 浓度平衡（如启用）使用 RNAcofold 集合自由能，"
+            "五物种统计力学自洽求解，允许链内与链间配对\n"
             "- MFE 模型不显式表示 Mg²⁺、dNTP 或引物浓度\n"
             "- GUI 只报告描述性指标，不用通用阈值判定引物合格/不合格"
         )

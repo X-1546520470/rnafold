@@ -71,8 +71,23 @@ class FoldResult:
     warnings: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class CofoldEnergies:
+    """Ensemble free energies (kcal/mol) of the five cofold species."""
+
+    ab: float
+    aa: float
+    bb: float
+    a: float
+    b: float
+
+
 _STRUCTURE_LINE = re.compile(
     r"^([().,&]+)\s+\(\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*\)\s*$"
+)
+_COFOLD_ENERGIES_RE = re.compile(
+    r"Free Energies:\s*\n\s*AB\s+AA\s+BB\s+A\s+B\s*\n"
+    r"\s*([-+\d.eE]+)\s+([-+\d.eE]+)\s+([-+\d.eE]+)\s+([-+\d.eE]+)\s+([-+\d.eE]+)"
 )
 _DUPLEX_LINE = re.compile(
     r"^([().]+)&([().]+)\s+"
@@ -237,6 +252,8 @@ def _run_vienna(
     salt_m: float,
     *,
     no_ps: bool,
+    extra_args: Sequence[str] = (),
+    cwd: Path | None = None,
 ) -> tuple[str, tuple[str, ...]]:
     if not 0.0 <= temperature_c <= 100.0:
         raise PrimerInputError("温度必须在 0–100 °C 之间。")
@@ -249,6 +266,7 @@ def _run_vienna(
         "--paramFile=DNA",
         f"--temp={temperature_c:.3f}",
         f"--salt={salt_m:.6f}",
+        *extra_args,
     ]
     if no_ps:
         command.insert(1, "--noPS")
@@ -263,6 +281,7 @@ def _run_vienna(
             capture_output=True,
             timeout=FOLD_TIMEOUT_SECONDS,
             env=environment,
+            cwd=None if cwd is None else str(cwd),
             check=False,
         )
     except subprocess.TimeoutExpired as exc:
@@ -468,6 +487,42 @@ def fold_dimer(
     )
     structure, mfe = _parse_duplex_output(output, primer_a, primer_b)
     return _make_result(job, folded_sequence, structure, mfe, warnings)
+
+
+def cofold_energies(
+    primer_a: Primer,
+    primer_b: Primer,
+    *,
+    temperature_c: float,
+    salt_m: float,
+) -> CofoldEnergies:
+    """Ensemble free energies of the five cofold species via RNAcofold.
+
+    The values do not depend on input concentrations; the ``-f`` file only
+    satisfies the ``-c`` output block that carries the energies.
+    """
+
+    input_text = f">{primer_a.name}\n{primer_a.sequence}&{primer_b.sequence}\n"
+    with tempfile.TemporaryDirectory(prefix="primerfold-cofold-") as temporary:
+        concfile = Path(temporary) / "conc.txt"
+        concfile.write_text("1e-9\n1e-9\n", encoding="utf-8")
+        output, _warnings = _run_vienna(
+            "RNAcofold",
+            input_text,
+            temperature_c,
+            salt_m,
+            no_ps=True,
+            extra_args=["-c", "-f", str(concfile)],
+            # RNAcofold -c writes dot-plot .ps files into its working
+            # directory even with --noPS; keep them inside the temp dir.
+            cwd=Path(temporary),
+        )
+    match = _COFOLD_ENERGIES_RE.search(output)
+    if match is None:
+        raise FoldExecutionError(
+            f"无法解析 RNAcofold 集合自由能输出：\n{output.strip()[:400]}"
+        )
+    return CofoldEnergies(*(float(value) for value in match.groups()))
 
 
 def render_structure_svg(sequence: str, structure: str) -> str:
