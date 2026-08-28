@@ -10,6 +10,10 @@ dist/
 .venv/
 venv/
 
+# ViennaRNA dot-plot leftovers
+*_dp5.ps
+*.ps
+
 # OS / editor
 .DS_Store
 Thumbs.db

@@ -10,6 +10,8 @@ DNA 参数（Mathews 2004）并禁止 T→U 自动转换。
 ## 功能特性
 
 - 🔬 **三种分析**：发卡结构（RNAfold）、自二聚体与交叉二聚体（RNAduplex，仅允许链间配对）。
+- ⚖️ **浓度平衡分析（可选）**：给定引物浓度，用 RNAcofold 集合自由能做五物种
+  统计力学求解，估算游离单链与 AB/AA/BB 二聚体的平衡浓度及引物占用比例。
 - 🧾 **引物属性**：Tm（SantaLucia 1998 最近邻法，含单价盐校正）、GC 含量、分子量、
   3′GC clamp 与最长同聚串，纯序列本地计算。
 - 🔥 **互作热图**：N×N 矩阵总览所有引物两两二聚体强度，颜色越红结合越强，
@@ -117,6 +119,7 @@ python -m unittest discover -s tests   # 需要本机可用 ViennaRNA
 
 - `primerfold/core.py` — 输入解析、ViennaRNA 调用与指标计算。
 - `primerfold/qc.py` — 基础引物属性（Tm、GC%、分子量、GC clamp、同聚串）。
+- `primerfold/equilibrium.py` — 浓度平衡五物种求解器与解读。
 - `primerfold/plot.py` — 解析 RNAplot SVG 几何并重绘为美化结构图。
 - `primerfold/present.py` — 结果解读、对照 HTML、互作热图与 HTML 报告。
 - `primerfold/app.py` — Streamlit 界面。
