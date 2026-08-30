@@ -1,0 +1,15 @@
+# PrimerFold 依赖环境（桌面版只需 python + viennarna；
+# 浏览器版额外需要 streamlit/pandas，setup.command 会一并装好）
+name: rnafold
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - python=3.11
+  - viennarna=2.7
+  - tkinter
+  - pip
+  - pip:
+      - streamlit>=1.49
+      - pandas>=2.0
+      - -e .

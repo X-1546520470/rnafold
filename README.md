@@ -40,33 +40,46 @@ cd rnafold
 pip install .
 ```
 
-macOS 快捷方式：双击 `launch.command`（默认使用
-`/opt/anaconda3/envs/rnafold` 环境中的 Python，可在脚本开头修改路径）。
+macOS 快捷方式：双击 `launch.command`（浏览器版）或 `run_desktop.command`
+（桌面版）。启动器会自动在常见位置寻找 `rnafold` conda 环境。
+
+## 在其他电脑上使用（下载即用）
+
+桌面版只依赖 Python 标准库（tkinter）+ ViennaRNA 命令行工具，因此换电脑
+只需一次安装：
+
+1. **安装 Miniforge**（如电脑上没有任何 conda）：
+   <https://github.com/conda-forge/miniforge#download>，Apple 芯片选 arm64。
+2. **获取本仓库**：`git clone`，或在 GitHub 页面 Code → Download ZIP 解压，
+   也可以直接把整个文件夹拷到移动硬盘携带。
+3. **双击 `setup.command`**：自动创建 `rnafold` conda 环境（含 ViennaRNA
+   2.7、tkinter，浏览器版还会装 streamlit/pandas）并以可编辑模式安装依赖。
+4. 之后双击 `run_desktop.command`（桌面版）或 `launch.command`（浏览器版）
+   即可使用，无需联网。
+
+启动器按以下顺序查找环境：`/opt/anaconda3`、`~/miniforge3`、
+`~/miniconda3`、`~/anaconda3`、`/opt/miniforge3`、`/opt/miniconda3` 下的
+`envs/rnafold`，最后用 PATH 里的 `conda info --base` 推断。
+
+> 说明：未采用 PyInstaller 打包单文件应用——ViennaRNA 是独立的编译二进制，
+> 且 macOS 对未签名 .app 有 Gatekeeper 拦截、arm64/x86_64 需分别打包；
+> conda 一键安装方案体积更小、跨芯片通用。
 
 ## 启动
 
 ```bash
-primerfold-gui            # pip 安装后的命令行入口 (浏览器界面)
-# 或
-python -m primerfold      # 等价入口
+# 桌面版（Tkinter 原生窗口，布局对齐 Analysis Tools 桌面工具）
+python -m primerfold.desktop          # 或双击 run_desktop.command
+primerfold-desktop                    # pip 安装后的桌面版入口
+
+# 浏览器版（Streamlit，功能最全）
+primerfold-gui                        # pip 安装后的命令行入口
+python -m primerfold                  # 等价入口
 python -m primerfold --port 8501 --headless   # 自定义端口 / 不自动开浏览器
 ```
 
-浏览器会自动打开 `http://127.0.0.1:8501`。停止服务时在终端按 `Control-C`。
-
-### 桌面版 (Tkinter, 双击即用)
-
-`run_desktop.command` 启动原生桌面窗口（无需浏览器），布局与 T7 盘
-Analysis Tools 桌面工具一致：① 输入引物 → 左侧参数 / 右侧结果页签
-（引物属性、互作热图、三类结构明细含美化结构图预览、浓度平衡、使用说明），
-支持载入 FASTA、保存 HTML 报告与单张结构图 SVG：
-
-```bash
-python -m primerfold.desktop          # 或双击 run_desktop.command
-primerfold-desktop                    # pip 安装后的桌面版入口
-```
-
-桌面版结构图预览使用 macOS 自带的 `qlmanage` 渲染，仅限 macOS。
+浏览器版会自动打开 `http://127.0.0.1:8501`，停止服务时在终端按
+`Control-C`。桌面版结构图预览使用 macOS 自带的 `qlmanage` 渲染，仅限 macOS。
 
 ## 输入格式
 
