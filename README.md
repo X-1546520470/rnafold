@@ -46,13 +46,27 @@ macOS 快捷方式：双击 `launch.command`（默认使用
 ## 启动
 
 ```bash
-primerfold-gui            # pip 安装后的命令行入口
+primerfold-gui            # pip 安装后的命令行入口 (浏览器界面)
 # 或
 python -m primerfold      # 等价入口
 python -m primerfold --port 8501 --headless   # 自定义端口 / 不自动开浏览器
 ```
 
 浏览器会自动打开 `http://127.0.0.1:8501`。停止服务时在终端按 `Control-C`。
+
+### 桌面版 (Tkinter, 双击即用)
+
+`run_desktop.command` 启动原生桌面窗口（无需浏览器），布局与 T7 盘
+Analysis Tools 桌面工具一致：① 输入引物 → 左侧参数 / 右侧结果页签
+（引物属性、互作热图、三类结构明细含美化结构图预览、浓度平衡、使用说明），
+支持载入 FASTA、保存 HTML 报告与单张结构图 SVG：
+
+```bash
+python -m primerfold.desktop          # 或双击 run_desktop.command
+primerfold-desktop                    # pip 安装后的桌面版入口
+```
+
+桌面版结构图预览使用 macOS 自带的 `qlmanage` 渲染，仅限 macOS。
 
 ## 输入格式
 
@@ -123,6 +137,7 @@ python -m unittest discover -s tests   # 需要本机可用 ViennaRNA
 - `primerfold/plot.py` — 解析 RNAplot SVG 几何并重绘为美化结构图。
 - `primerfold/present.py` — 结果解读、对照 HTML、互作热图与 HTML 报告。
 - `primerfold/app.py` — Streamlit 界面。
+- `primerfold/desktop.py` — Tkinter 桌面版界面。
 - `primerfold/__main__.py` — `python -m primerfold` 启动入口。
 
 ## 许可证

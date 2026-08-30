@@ -32,6 +32,7 @@ Homepage = "https://github.com/X-1546520470/rnafold"
 
 [project.scripts]
 primerfold-gui = "primerfold.__main__:main"
+primerfold-desktop = "primerfold.desktop:main"
 
 [tool.setuptools]
 packages = ["primerfold"]
